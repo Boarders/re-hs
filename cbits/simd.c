@@ -10,11 +10,12 @@ uint8_t b[16] = {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
 
 int simd_comp(__m128i p_val, uint8_t * t);
 
-
+/*
 void main() {
   __m128i mm_a = _mm_loadu_si128(a);  
   printf("%d\n", simd_comp(mm_a,b));
 }
+*/
 
 int simd_comp(__m128i p_val, uint8_t* t){
   //__m128i mm_p = _mm_loadu_si128(p);
