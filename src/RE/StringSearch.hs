@@ -26,10 +26,8 @@ accursedUnutterablePerformIO (IO m) = case m realWorld# of (# _, r #) -> r
 
 foreign import ccall unsafe "simd_comp" simd_comp :: Word8X16# -> Ptr Word8 -> Int#
 
-example :: IO Int
-example = do
-  ptr <- array
-  return $ I# (simd_comp a# ptr)
+example :: Int
+example = I# (simd_comp a# array)
   where
     a# = packWord8X16#
            (# 1##  , 2## , 3## , 4##
@@ -38,10 +36,8 @@ example = do
             , 1##  , 2## , 3## , 4##
             #)
 
-array :: IO (Ptr Word8)
-array = do
-  mba <- unsafeThawByteArray ba
-  return (mutableByteArrayContents mba)
+array :: Ptr Word8
+array = byteArrayContents ba
   where
   ba = byteArrayFromList @Word8 (take 16 $ repeat 1)
 
@@ -55,7 +51,7 @@ match baPat baTgt =
     matchWork baPat tgtS tgtPtr
     
 
-data Match
+data Match = Match
   { numMatch  :: !Int
   , matchInds :: [Int]
   }
@@ -96,4 +92,19 @@ matchWork mbPat tgtS tgtPtr = undefined
       match_p (advancePtr ptr 1) (j + 1) acc'# count
 
   
+
+getBitsSet :: Int -> Int -> [Int]
+getBitsSet off = go []
+  where
+  go :: [Int] -> Int -> [Int]
+  go acc 0    = acc
+  go acc bits =
+    let
+      leadBit = countTrailingZeros bits
+      bits'   = clearBit leadBit bits
+      ind     = off + (16 - leadBit)
+    in
+      go ((leadBit + off):acc) bits'
+      
+
 

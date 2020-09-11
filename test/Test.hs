@@ -4,8 +4,7 @@ import RE.StringSearch
 
 main :: IO ()
 main = do
-  example >>= print
-  print "eloo"
+  print example
 
 
 -- defaultMain  testSuite
