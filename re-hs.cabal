@@ -39,6 +39,7 @@ Library
                   , bytestring
                   , bitvec
                   , ghc-prim
+                  , streaming
 
   exposed-modules:  RE.NFA
                     RE.StringSearch
@@ -66,7 +67,8 @@ Test-Suite test
                   , base                   
                   , QuickCheck             
                   , tasty                  
-                  , tasty-quickcheck       
+                  , tasty-quickcheck
+                  , bytestring   
 
 
   other-modules:                        
