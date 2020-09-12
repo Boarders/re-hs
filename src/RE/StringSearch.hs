@@ -20,11 +20,35 @@ import GHC.Int
 import Data.Bits
 import GHC.Types (IO(..))
 import System.IO.Unsafe (unsafePerformIO)
+-- import Data.ByteString
+import System.IO
 
 usf = unsafePerformIO
 tr str a = usf $ putStrLn str >> print a >> putStrLn "" >> return a
 tr' str a = a
 
+
+matchFromFile :: Int -> Handle -> ByteArray -> IO Int
+matchFromFile bufSize fileHdlr baPat = do
+    fileSize <- hFileSize fileHdlr
+    let (div, rem) = quotRem fileSize (fromIntegral bufSize)
+    let fullBuf = buf bufSize
+    let lastBuf = buf (fromIntegral rem)
+    print div
+    print rem
+    return 1
+  where
+
+    buf :: Int -> IO Int
+    buf bsz  = do
+      mba <- newPinnedByteArray bsz
+      let mbaPtr = mutableByteArrayContents mba
+      hGetBufSome fileHdlr mbaPtr bsz
+
+
+  
+  
+  
 
 accursedUnutterablePerformIO :: IO a -> a
 accursedUnutterablePerformIO (IO m) = case m realWorld# of (# _, r #) -> r
@@ -53,14 +77,13 @@ pat = byteArrayFromList @Word8 [1,2,3,4]
 
 tgt :: ByteArray
 tgt = byteArrayFromList @Word8
-  ([1,2,3,4] <> [1,2,3,4] <> (replicate 50 1) <> [1,2,3,4,5,1,2,3,1,2,3,4,2,3,4])
+  ([1,2,3,4] <> [1,2,3,4] <> (replicate 25 1) <> [1,2,3,4] <> (replicate 25 1) <> [1,2,3,4,8,1,2,3,1,2,3,4,2,3,4])
 
 
-match :: ByteArray -> ByteArray -> Int
-match baPat baTgt =
+match :: ByteArray -> Int -> MutableByteArray RealWorld -> Int
+match baPat tgtS mbaTgt =
   let
-    tgtPtr = byteArrayContents baTgt
-    tgtS   = sizeofByteArray baTgt
+    tgtPtr = mutableByteArrayContents  mbaTgt
   in
     matchWork baPat tgtS tgtPtr
     
@@ -86,25 +109,28 @@ matchWork mbPat tgtS tgtPtr = match_p 0 tgtPtr 0 accStart# 0
     let r = tgtS - endS + 1 in
       --print r >> return
       r
-  finalPtr  = advancePtr tgtPtr hittingPt
+  finalPtr_p  = advancePtr tgtPtr hittingPt
+  finalPtr    = advancePtr tgtPtr (tgtS - patS + 1)
+  
 
   endPtr = advancePtr tgtPtr (tgtS - endS)
 
   match_end :: Int -> Int -> Ptr Word8 -> Int -> Int
-  match_end i j ptr count | i == 16  = count
+  match_end i j ptr count | ptr == finalPtr = count
   match_end i j ptr count | j == patS =
     let
-      i' = tr' "i'" (i + 1)
+      i' = (i + 1)
     in
       match_end i' 0 (advancePtr ptr 1) (count + 1)
   match_end i j ptr count =
     let
-      patV = tr' "patV" $ indexByteArray mbPat j
-      tgtV = tr "tgtV" $ indexOffPtr ptr i
-      i' = tr' "i'" (i + 1)      
+      patV = indexByteArray mbPat j
+      tgtV = indexOffPtr ptr j
+      i' = (i + 1)
+      j' = (j + 1)
     in
       if patV == tgtV then
-        match_end i' (j + 1) (advancePtr ptr 1) count
+        match_end i j' ptr count
       else
         match_end i' 0 (advancePtr ptr 1) count
     
