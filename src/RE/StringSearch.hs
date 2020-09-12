@@ -19,6 +19,12 @@ import GHC.Word
 import GHC.Int
 import Data.Bits
 import GHC.Types (IO(..))
+import System.IO.Unsafe (unsafePerformIO)
+
+usf = unsafePerformIO
+tr str a = usf $ putStrLn str >> print a >> putStrLn "" >> return a
+tr' str a = a
+
 
 accursedUnutterablePerformIO :: IO a -> a
 accursedUnutterablePerformIO (IO m) = case m realWorld# of (# _, r #) -> r
@@ -42,6 +48,14 @@ array = byteArrayContents ba
   ba = byteArrayFromList @Word8 (take 16 $ repeat 1)
 
 
+pat :: ByteArray
+pat = byteArrayFromList @Word8 [1,2,3,4]
+
+tgt :: ByteArray
+tgt = byteArrayFromList @Word8
+  ([1,2,3,4] <> [1,2,3,4] <> (replicate 50 1) <> [1,2,3,4,5,1,2,3,1,2,3,4,2,3,4])
+
+
 match :: ByteArray -> ByteArray -> Int
 match baPat baTgt =
   let
@@ -63,33 +77,65 @@ matchWork
   -> Int
   -> Ptr Word8
   -> Int
-matchWork mbPat tgtS tgtPtr = undefined
+matchWork mbPat tgtS tgtPtr = match_p 0 tgtPtr 0 accStart# 0
   where
+  I# accStart# = fromIntegral $ maxBound @Word16
   patS   = sizeofByteArray mbPat
-  hittingPt = max (tgtS - 16) (tgtS - patS) + 1
+  endS   = 15 + patS
+  hittingPt =
+    let r = tgtS - endS + 1 in
+      --print r >> return
+      r
   finalPtr  = advancePtr tgtPtr hittingPt
+
+  endPtr = advancePtr tgtPtr (tgtS - endS)
+
+  match_end :: Int -> Int -> Ptr Word8 -> Int -> Int
+  match_end i j ptr count | i == 16  = count
+  match_end i j ptr count | j == patS =
+    let
+      i' = tr' "i'" (i + 1)
+    in
+      match_end i' 0 (advancePtr ptr 1) (count + 1)
+  match_end i j ptr count =
+    let
+      patV = tr' "patV" $ indexByteArray mbPat j
+      tgtV = tr "tgtV" $ indexOffPtr ptr i
+      i' = tr' "i'" (i + 1)      
+    in
+      if patV == tgtV then
+        match_end i' (j + 1) (advancePtr ptr 1) count
+      else
+        match_end i' 0 (advancePtr ptr 1) count
+    
+    
   
-  match_p :: Ptr Word8 -> Int -> Int# -> Int -> Int
+  match_p :: Int ->  Ptr Word8 -> Int -> Int# -> Int -> Int
   -- There can be no more matches
-  match_p ptr j acc# count | ptr == finalPtr = count
+  match_p i ptr j acc# count | i >= hittingPt =
+                               --tr "1" $
+                               count + match_end 0 0 endPtr 0
   -- The current collection of considered matches don't work so skip forward by 16
-  match_p ptr j acc# count | tagToEnum# (acc# ==# 0#) =
-    match_p (advancePtr ptr 16) 0 0# count
+  match_p i ptr j acc# count | tagToEnum# (acc# ==# 0#) = --tr "2" $
+    match_p (i + 16) (advancePtr ptr 16) 0 accStart# count
   -- A match is found
-  match_p ptr j acc# count | j == patS =
+  match_p i ptr j acc# count | j == patS =
     let
       count' = (I# (word2Int# (popCnt# (int2Word# acc#)))) + count
     in
-      match_p (advancePtr ptr 16) 0 0# count'
+--      tr "3" $ 
+      match_p (i + 16) (advancePtr ptr 16) 0 accStart# count'
   -- Do work
-  match_p ptr j acc# count =
+  match_p i ptr j acc# count =
     let
       W8# p_val# = indexByteArray mbPat j
-      p_j16# = broadcastWord8X16# p_val#
-      j_comp# = simd_comp p_j16# tgtPtr
-      acc'# = andI# acc# j_comp#
+      p_j16#  = broadcastWord8X16# p_val#
+      j_comp# = simd_comp p_j16# ptr
+      acc'#   = andI# acc# j_comp#
+      ptr'    = advancePtr ptr 1
     in
-      match_p (advancePtr ptr 1) (j + 1) acc'# count
+--      tr "4" $ 
+      match_p (i + 1) (advancePtr ptr 1) (j + 1) acc'# count
 
   
 

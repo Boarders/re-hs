@@ -4,7 +4,8 @@ import RE.StringSearch
 
 main :: IO ()
 main = do
-  print example
+--  print example
+  print $ match pat tgt
 
 
 -- defaultMain  testSuite
