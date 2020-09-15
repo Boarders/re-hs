@@ -1,14 +1,16 @@
 module Main where
 
 import RE.StringSearch
-import Data.ByteString as BS
+import qualified Data.ByteString as BS
 import System.IO
+import Data.Foldable
+
 
 main :: IO ()
 main = do
   testFile
   withFile fileName ReadMode $ \hdlr -> do
-    matchFromFile 8 hdlr pat
+    matchFromFile 32 hdlr pat >>= print
     pure ()
 
     
@@ -28,12 +30,15 @@ testSuite = testGroup "Perfect Vector Sort"
 fileName :: FilePath
 fileName = "test.dat"
 
-bstr :: ByteString
+bstr :: BS.ByteString
 bstr =
-  BS.replicate 100 1
+  let pat = BS.pack ([1,2,3,4] <> take 28 (repeat 0))
+  in fold (replicate 12 pat) <> (BS.pack [1,2,3,4])
 
 testFile :: IO ()
 testFile = do
+  putStrLn "Writing file..."
   BS.writeFile fileName bstr
+  putStrLn "File written"
   
   
