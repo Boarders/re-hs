@@ -42,6 +42,8 @@ matchFromFile :: Int -> Handle -> ByteArray -> IO Match
 matchFromFile bufSize fileHdlr baPat = do
     fileSize <- hFileSize fileHdlr
     let (div, rem) = quotRem fileSize (fromIntegral bufSize)
+    putStrLn $ "div = " <> show div
+    putStrLn $ "rem = " <> show rem
     let tgtSize = bufSize + 15    
     mba <- newPinnedByteArray tgtSize
     let mbaPtrStart   = mutableByteArrayContents mba
@@ -55,9 +57,10 @@ matchFromFile bufSize fileHdlr baPat = do
         remI :: Int
         remI = fromIntegral rem
       hGetBufSome fileHdlr divPtr remI
+--      liftIO $ traverse_ (\n -> readOffPtr divPtr n >>= print) [0..99]  
       let divPtrStr = advancePtr divPtr (- 16)
       liftIO $ putStrLn "end"
-      liftIO $ traverse_ (\n -> readOffPtr divPtrStr n >>= print) [0..(remI + 15)]
+      liftIO $ traverse_ (\n -> readOffPtr divPtrStr n >>= print) [0..17]
       matchWork baPat (remI + 15) divPtrStr
     pure $ divMatches <> remRes
       
@@ -75,10 +78,13 @@ readFromHandle numReads readSize hdlr currPtr = do
       ptr' <- respond ptr
       pure ptr'
     go n ptr = do
+--      liftIO $ putStrLn "ptr upstream: "
+--      liftIO $ traverse_ (\n -> readOffPtr ptr n >>= print) [0..readSize]      
       ptr' <- respond ptr
       liftIO $ putStrLn $ "div = " <> show n
       liftIO $ hGetBufSome hdlr ptr' readSize
-      liftIO $ traverse_ (\n -> readOffPtr ptr' n >>= print) [0..31]
+      liftIO $ putStrLn $ "readPtr"
+      liftIO $ traverse_ (\n -> readOffPtr ptr' n >>= print) [0..readSize-1]
       go (n - 1) ptr'
 
 
@@ -95,7 +101,7 @@ initialState =
   MatchState 0 accStart
 
 accStart :: Int
-accStart = fromIntegral $ maxBound @Word16
+accStart = maxBound @Int
 
    
 matchWorkP
@@ -106,10 +112,13 @@ matchWorkP
   -> Ptr Word8
   -> Proxy (Ptr Word8) (Ptr Word8) () Match IO (Ptr Word8)
 matchWorkP c MatchState{..} baPat tgtS currPtr  = do
- -- liftIO $ print c
+--  liftIO $ putStrLn "ptr downstream: "
+--  liftIO $ traverse_ (\n -> readOffPtr currPtr n >>= print) [0..(tgtS - 1)]
   tgtPtr <- request currPtr
-  let I# mBits# = mBits
+  let I# !mBits# = mBits
   (matchState, count) <- liftIO $ match_p 0 tgtPtr mStart mBits# 0
+  liftIO $ putStrLn "match state : "
+  liftIO $ putStrLn $ show matchState
   let matches = Match count []
   let endPtr = advancePtr tgtPtr (tgtS - 15)  
   let newPtr = advancePtr tgtPtr 16
@@ -117,32 +126,36 @@ matchWorkP c MatchState{..} baPat tgtS currPtr  = do
   yield matches
   matchWorkP (c + 1) matchState baPat tgtS newPtr
   where
-  I# accStart# = fromIntegral $ maxBound @Word16
+  I# !accStart# = accStart
   patS   = sizeofByteArray baPat
   endS   = 15 + patS
-  hittingPt =
-    let r = tgtS - endS + 1 in
-      --print r >> return
-      r
+  hittingPt = tgtS - endS + 1
+
   match_p :: Int ->  Ptr Word8 -> Int -> Int# -> Int -> IO (MatchState, Int)
-  -- There can be no more matches
-  match_p i ptr j acc# count | i >= hittingPt = do
-                               putStrLn "no match"
-                               putStrLn $ "i = " <> show i
-                               pure  $ (MatchState j (I# acc#), count)
-  -- The current collection of considered matches don't work so skip forward by 16
-  match_p i ptr j acc# count | tagToEnum# (acc# ==# 0#) =
-    match_p (i + 16) (advancePtr ptr 16) 0 accStart# count
   -- A match is found
   match_p i ptr j acc# count | j == patS =
     let
+      nextBlock = 15 - patS
+      nextPtrBlock = advancePtr ptr nextBlock
       count' = (I# (word2Int# (popCnt# (int2Word# acc#)))) + count
+      i' = i + nextBlock
     in
       do
-        putStrLn ""        
-        putStrLn "found"
-        putStrLn $ "i = " <> show i
-        match_p (i + 16) (advancePtr ptr 16) 0 accStart# count'
+        putStrLn "COUNT"
+        print count'
+        match_p i' nextPtrBlock 0 accStart# count'  
+  -- There can be no more matche
+  match_p i ptr j acc# count | i >= hittingPt =
+    pure  $ (MatchState j (I# acc#), count)
+  -- The current collection of considered matches don't work so skip forward by 16
+  match_p i ptr j acc# count | tagToEnum# (acc# ==# 0#) =
+ -- see below for why 15 is correct
+    let
+      nextBlock = 15 - j
+      nextPtrBlock = advancePtr ptr nextBlock
+      i' = i + nextBlock      
+    in
+      match_p i' nextPtrBlock 0 accStart# count
   -- Do work
   match_p i ptr j acc# count =
     let
@@ -150,13 +163,8 @@ matchWorkP c MatchState{..} baPat tgtS currPtr  = do
       p_j16#  = broadcastWord8X16# p_val#
       j_comp# = simd_comp p_j16# ptr
       acc'#   = andI# acc# j_comp#
-      ptr'    = advancePtr ptr 1
     in
-      do
-        putStrLn ""        
-        putStrLn "work"
-        putStrLn $ "i = " <> show i
-        match_p (i + 1) (advancePtr ptr 1) (j + 1) acc'# count
+      match_p (i + 1) (advancePtr ptr 1) (j + 1) acc'# count
 
 
 data Match = Match
@@ -227,7 +235,7 @@ matchWork
   -> IO Match
 matchWork mbPat tgtS tgtPtr = match_p 0 tgtPtr 0 accStart# 0
   where
-  I# accStart# = fromIntegral $ maxBound @Word16
+  I# accStart# = accStart
   patS   = sizeofByteArray mbPat
   endS   = 15 + patS
   hittingPt =
@@ -279,29 +287,54 @@ matchWork mbPat tgtS tgtPtr = match_p 0 tgtPtr 0 accStart# 0
   match_p i ptr j acc# count | i >= hittingPt =
     do
       putStrLn ""
-      putStrLn "endPtr"
-      traverse_ (\n -> readOffPtr endPtr n >>= print) [0..19]
+--      putStrLn "endPtr"
+--      traverse_ (\n -> readOffPtr endPtr n >>= print) [0..19]
+      putStrLn "count "
+      print count
+      putStrLn ""
       (<> Match count []) <$> match_end 0 0 endPtr 0
   -- The current collection of considered matches don't work so skip forward by 16
   match_p i ptr j acc# count | tagToEnum# (acc# ==# 0#) = --tr "2" $
-    match_p (i + 16) (advancePtr ptr 16) 0 accStart# count
+    do
+      putStrLn "match failed"
+      putStrLn $ "i = " <> show i
+  --  Note the pointer has already been advanced forward here, it maybe be better
+  --  to advance at the start of the do work branch
+      let nextBlock = 15 - j
+      let nextPtrBlock = advancePtr ptr nextBlock
+      match_p (i + nextBlock) nextPtrBlock 0 accStart# count
   -- A match is found
   match_p i ptr j acc# count | j == patS =
     let
       count' = (I# (word2Int# (popCnt# (int2Word# acc#)))) + count
+      nextBlock = 15 - patS
+      nextPtrBlock = advancePtr ptr nextBlock
     in
---      tr "3" $ 
-      match_p (i + 16) (advancePtr ptr 16) 0 accStart# count'
+      do
+        putStrLn "match found"
+        putStrLn $ "count = " <> show count'
+        putStrLn "ptr :"
+        liftIO $ traverse_ (\n -> readOffPtr ptr n >>= print) [0..15]        
+--      tr "3" $
+        match_p (i + nextBlock) nextPtrBlock 0 accStart# count'
+--        match_p (i + 16) (advancePtr ptr 16) 0 accStart# count'
+        
   -- Do work
   match_p i ptr j acc# count =
     let
       W8# p_val# = indexByteArray mbPat j
       p_j16#  = broadcastWord8X16# p_val#
+      ptr'    = advancePtr ptr 1
+      i'      = i + 1
       j_comp# = simd_comp p_j16# ptr
       acc'#   = andI# acc# j_comp#
-      ptr'    = advancePtr ptr 1
     in
-      match_p (i + 1) (advancePtr ptr 1) (j + 1) acc'# count
+      do
+        putStrLn $ "jComp = " <> show (I# j_comp#)
+--        putStrLn $ "ptr"
+--        liftIO $ traverse_ (\n -> readOffPtr ptr n >>= print) [0..15]
+        putStrLn $ ""        
+        match_p (i + 1) (advancePtr ptr 1) (j + 1) acc'# count
 
   
 --}
