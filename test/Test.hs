@@ -10,7 +10,7 @@ main :: IO ()
 main = do
   testFile
   withFile fileName ReadMode $ \hdlr -> do
-    matchFromFile 32 hdlr pat >>= print
+    matchFromFile (2^4) hdlr pat >>= print
     pure ()
 
     
@@ -30,10 +30,12 @@ testSuite = testGroup "Perfect Vector Sort"
 fileName :: FilePath
 fileName = "test.dat"
 
+
+
 bstr :: BS.ByteString
 bstr =
-  let pat = BS.pack ([1,2,3,4] <> take 28 (repeat 0))
-  in fold (replicate 12 pat) <> (BS.pack [1,2,3,4])
+  let pat = BS.pack ([1,2,3,4,5])
+  in fold (replicate 20 pat)
 
 testFile :: IO ()
 testFile = do
