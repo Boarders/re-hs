@@ -39,7 +39,8 @@ Library
                   , bytestring
                   , bitvec
                   , ghc-prim
-                  , streaming
+                  , pipes
+                  , transformers
 
   exposed-modules:  RE.NFA
                     RE.StringSearch
