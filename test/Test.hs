@@ -9,13 +9,16 @@ import Data.Foldable
 import Data.Char
 import Data.Primitive.ByteArray
 import GHC.Word
+import qualified Data.ByteString.Builder as Builder
+import qualified Data.ByteString.Lazy as Lazy
+
 
 
 main :: IO ()
 main = do
- -- testFile
+  testFile
   withFile fileName ReadMode $ \hdlr -> do
-    matchFromFile (2^10) hdlr myPat >>= print
+    matchFromFile (2^16) hdlr myPat >>= print
     pure ()
 
     
@@ -38,18 +41,23 @@ fileName = "test.dat"
 myPat :: ByteArray 
 myPat = byteArrayFromList @Word8 [100,111,103]
 
-bstr :: BS.ByteString
+bstr :: Lazy.ByteString
 bstr =
   let
-    notPat = BS.pack ([1,2,3,4,5])
-    pat    = BS.pack ([100,111,103])
+    notPat = foldMap Builder.word8 ([1,2,3,4,5])
+    pat    = foldMap Builder.word8 ([100,111,103,112, 112])
+    chunk  = fold (replicate (10 ^ 8) notPat)
   in
-    fold $ replicate (10^5) notPat <> [pat] <> replicate (10^5) notPat
+    Builder.toLazyByteString $
+      chunk <> pat <> chunk
+
+
+    --fold $ replicate (10^6) notPat <> [pat] <> replicate (10^5) notPat
 
 testFile :: IO ()
 testFile = do
   putStrLn "Writing file..."
-  BS.writeFile fileName bstr
+  Lazy.writeFile fileName bstr
   putStrLn "File written"
   
   

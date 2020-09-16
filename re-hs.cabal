@@ -35,7 +35,8 @@ Library
                     -fllvm
 
   build-depends:    base      
-                  , primitive
+--                  , primitive
+                  , primitive-checked
                   , bytestring
                   , bitvec
                   , ghc-prim
