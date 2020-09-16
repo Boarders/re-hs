@@ -35,7 +35,7 @@ fileName = "test.dat"
 bstr :: BS.ByteString
 bstr =
   let pat = BS.pack ([1,2,3,4,5])
-  in fold (replicate 11 pat)
+  in fold (replicate 23 pat)
 
 testFile :: IO ()
 testFile = do

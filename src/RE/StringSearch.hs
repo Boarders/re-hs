@@ -61,6 +61,7 @@ matchFromFile bufSize fileHdlr baPat = do
       hGetBufSome fileHdlr divPtr remI
 --      liftIO $ traverse_ (\n -> readOffPtr divPtr n >>= print) [0..99]  
       let divPtrStr = advancePtr divPtr (- copySize)
+      liftIO $ putStrLn $ "copySize = " <> show copySize
       liftIO $ putStrLn "end"
       liftIO $ traverse_ (\n -> readOffPtr divPtrStr n >>= print) [0..remI + copySize - 1]
       matchWork baPat (remI + copySize) divPtrStr
@@ -78,7 +79,7 @@ readFromHandle numReads readSize hdlr currPtr = do
     go :: Int -> Ptr Word8 -> Proxy X () (Ptr Word8) (Ptr Word8) IO (Ptr Word8)
     go 0 ptr = do
       ptr' <- respond ptr
-      pure ptr'
+      pure ptr'     
     go n ptr = do
 --      liftIO $ putStrLn "ptr upstream: "
 --      liftIO $ traverse_ (\n -> readOffPtr ptr n >>= print) [0..readSize]      
@@ -121,13 +122,15 @@ matchWorkP baPat tgtS currPtr  = do
   -- once we have read the rest from the handler we need to go back to the start
   -- of the previous buffer
   let tgtPtr = advancePtr readPtr (- copySize)
-  liftIO $ putStrLn "copiedPtr: "
-  liftIO $ traverse_ (\n -> readOffPtr tgtPtr n >>= print) [0..32 + copySize - 1]  
+  liftIO $ putStrLn $ "tgtS = " <> show tgtS
+  liftIO $ putStrLn $ "copySize = " <> show copySize  
+--  liftIO $ putStrLn "copiedPtr: "
+  liftIO $ traverse_ (\n -> readOffPtr tgtPtr n >>= print) [0..49]
   count <- liftIO $ match_p 0 tgtPtr 0 accStart# 0
   let matches = Match count []
-  let blockSize = patS + 15
-  let copySize  = blockSize - 1
-  let endPtr = advancePtr tgtPtr (tgtS - blockSize + 1)
+  let endPtr = advancePtr tgtPtr (tgtS - copySize)
+  liftIO $ putStrLn "first element copied"
+  liftIO $ traverse_ (\n -> readOffPtr endPtr n >>= print) [0]  
   let newPtr = advancePtr tgtPtr copySize
   liftIO $ copyPtr tgtPtr endPtr copySize
   yield matches
@@ -143,7 +146,7 @@ matchWorkP baPat tgtS currPtr  = do
   -- A match is found
   match_p i ptr j acc# count | j == patS =
     let
-      nextBlock = 15 - patS
+      nextBlock = 16 - patS
       nextPtrBlock = advancePtr ptr nextBlock
       count' = (I# (word2Int# (popCnt# (int2Word# acc#)))) + count
       i' = i + nextBlock
@@ -159,7 +162,7 @@ matchWorkP baPat tgtS currPtr  = do
   match_p i ptr j acc# count | tagToEnum# (acc# ==# 0#) =
  -- see below for why 15 is correct
     let
-      nextBlock = 15 - j
+      nextBlock = 16 - j
       nextPtrBlock = advancePtr ptr nextBlock
       i' = i + nextBlock      
     in
@@ -312,18 +315,19 @@ matchWork mbPat tgtS tgtPtr = match_p 0 tgtPtr 0 accStart# 0
       putStrLn $ "i = " <> show i
   --  Note the pointer has already been advanced forward here, it maybe be better
   --  to advance at the start of the do work branch
-      let nextBlock = 15 - j
+      let nextBlock = 16 - j
       let nextPtrBlock = advancePtr ptr nextBlock
       match_p (i + 16) nextPtrBlock 0 accStart# count
   -- A match is found
   match_p i ptr j acc# count | j == patS =
     let
       count' = (I# (word2Int# (popCnt# (int2Word# acc#)))) + count
-      nextBlock = 15 - patS
+      nextBlock = 16 - patS
       nextPtrBlock = advancePtr ptr nextBlock
     in
       do
         putStrLn "match found"
+        putStrLn $ "i = " <> show i
         putStrLn $ "count = " <> show count'
 --        putStrLn "ptr :"
 --        liftIO $ traverse_ (\n -> readOffPtr ptr n >>= print) [0..15]        
@@ -340,9 +344,13 @@ matchWork mbPat tgtS tgtPtr = match_p 0 tgtPtr 0 accStart# 0
       i'      = i
       j_comp# = simd_comp p_j16# ptr
       acc'#   = andI# acc# j_comp#
+
     in
       do
+        val <- readOffPtr ptr 0 
         putStrLn $ "j = " <> show j
+        putStrLn $ "pVal = " <> show (W8# p_val#)
+        putStrLn $ "ptrVal = " <> show val
         putStrLn $ "j_comp = " <> show (I# j_comp#)
 --        
 --        putStrLn $ "ptr"
