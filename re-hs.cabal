@@ -33,6 +33,7 @@ Library
                     -fexpose-all-unfoldings
                     -fspecialise-aggressively
                     -fllvm
+                    -g
 
   build-depends:    base      
 --                  , primitive

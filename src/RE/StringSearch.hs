@@ -12,7 +12,7 @@ module RE.StringSearch where
 
 import GHC.Prim
 
-import Data.Primitive.ByteArray
+import Data.Primitive.ByteArray hiding (byteArrayFromList, byteArrayFromListN)
 import Data.Primitive.Ptr
 import Data.Primitive.Types
 import GHC.Word
@@ -29,6 +29,7 @@ import Pipes.Core as Pipes
 import qualified Pipes.Prelude as Pipes
 import Control.Monad ((>=>))
 import Data.Foldable (traverse_)
+import Control.Monad.ST (runST)
 
 usf = unsafePerformIO
 tr str a = usf $ putStrLn str >> print a >> putStrLn "" >> return a
@@ -36,6 +37,30 @@ tr' str a = a
 
 my_sum :: Producer Match IO (Ptr Word8) -> IO (Match, Ptr Word8)
 my_sum = Pipes.fold' (<>) mempty id
+
+die :: String -> String -> a
+die fun problem = error $ "Data.Primitive.ByteArray." ++ fun ++ ": " ++ problem
+
+byteArrayFromList :: Prim a => [a] -> ByteArray
+byteArrayFromList xs = byteArrayFromListN (length xs) xs
+
+
+  -- | Create a 'ByteArray' from a list of a known length. If the length
+--   of the list does not match the given length, this throws an exception.
+byteArrayFromListN :: Prim a => Int -> [a] -> ByteArray
+byteArrayFromListN n ys = runST $ do
+    marr <- newByteArray (n * sizeOf (head ys))
+    let go !ix [] = if ix == n
+          then return ()
+          else die "byteArrayFromListN" "list length less than specified size"
+        go !ix (x : xs) = if ix < n
+          then do
+            writeByteArray marr ix x
+            go (ix + 1) xs
+          else die "byteArrayFromListN" "list length greater than specified size"
+    go 0 ys
+    unsafeFreezeByteArray marr
+
 
 
 matchFromFile :: Int -> Handle -> ByteArray -> IO Match
@@ -62,7 +87,7 @@ matchFromFile bufSize fileHdlr baPat = do
       let
         remI :: Int
         remI = fromIntegral rem
-      liftIO $ putStrLn $ "read " <> show remI        
+--      liftIO $ putStrLn $ "read " <> show remI        
       hGetBufSome fileHdlr divPtr remI
 --      liftIO $ traverse_ (\n -> readOffPtr divPtr n >>= print) [0..99]  
       let divPtrStr = advancePtr divPtr (- copySize)
@@ -90,7 +115,7 @@ readFromHandle numReads readSize hdlr currPtr = do
 --      liftIO $ traverse_ (\n -> readOffPtr ptr n >>= print) [0..readSize]      
       ptr' <- respond ptr
 --      liftIO $ putStrLn $ "div = " <> show 
-      liftIO $ putStrLn $ "read " <> show readSize
+--      liftIO $ putStrLn $ "read " <> show readSize
       liftIO $ hGetBufSome hdlr ptr' readSize
 --      liftIO $ putStrLn $ "readPtr"
 --      liftIO $ traverse_ (\n -> readOffPtr ptr' n >>= print) [0..readSize-1]
