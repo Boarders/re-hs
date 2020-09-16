@@ -41,29 +41,34 @@ my_sum = Pipes.fold' (<>) mempty id
 matchFromFile :: Int -> Handle -> ByteArray -> IO Match
 matchFromFile bufSize fileHdlr baPat = do
     fileSize <- hFileSize fileHdlr
+    putStrLn $ "file size " <> show fileSize
     let patS   = sizeofByteArray baPat
     let copySize = patS + 15 - 1
+    let offset   = 16 - (copySize `mod` 16)
     let (div, rem) = quotRem fileSize (fromIntegral bufSize)
     putStrLn $ "div = " <> show div
     putStrLn $ "rem = " <> show rem
     let tgtSize = bufSize + copySize    
-    mba <- newPinnedByteArray tgtSize
+    mba <- newAlignedPinnedByteArray tgtSize 16
     let mbaPtrStart   = mutableByteArrayContents mba
-    let matchPtrStart = advancePtr mbaPtrStart 15
+    let matchPtrStart = advancePtr mbaPtrStart copySize
+    print mbaPtrStart
+    print matchPtrStart
     (divMatches, divPtr) <- my_sum $
            readFromHandle (fromIntegral div) bufSize fileHdlr matchPtrStart
        >>~ matchWorkP baPat tgtSize
-    liftIO $ putStrLn $ "divMatches: " <> show divMatches
+--    liftIO $ putStrLn $ "divMatches: " <> show divMatches
     remRes <- do
       let
         remI :: Int
         remI = fromIntegral rem
+      liftIO $ putStrLn $ "read " <> show remI        
       hGetBufSome fileHdlr divPtr remI
 --      liftIO $ traverse_ (\n -> readOffPtr divPtr n >>= print) [0..99]  
       let divPtrStr = advancePtr divPtr (- copySize)
-      liftIO $ putStrLn $ "copySize = " <> show copySize
-      liftIO $ putStrLn "end"
-      liftIO $ traverse_ (\n -> readOffPtr divPtrStr n >>= print) [0..remI + copySize - 1]
+--      liftIO $ putStrLn $ "copySize = " <> show copySize
+--      liftIO $ putStrLn "end"
+--      liftIO $ traverse_ (\n -> readOffPtr divPtrStr n >>= print) [0..remI + copySize - 1]
       matchWork baPat (remI + copySize) divPtrStr
     pure $ divMatches <> remRes
       
@@ -84,7 +89,8 @@ readFromHandle numReads readSize hdlr currPtr = do
 --      liftIO $ putStrLn "ptr upstream: "
 --      liftIO $ traverse_ (\n -> readOffPtr ptr n >>= print) [0..readSize]      
       ptr' <- respond ptr
-      liftIO $ putStrLn $ "div = " <> show n
+--      liftIO $ putStrLn $ "div = " <> show 
+      liftIO $ putStrLn $ "read " <> show readSize
       liftIO $ hGetBufSome hdlr ptr' readSize
 --      liftIO $ putStrLn $ "readPtr"
 --      liftIO $ traverse_ (\n -> readOffPtr ptr' n >>= print) [0..readSize-1]
@@ -122,15 +128,15 @@ matchWorkP baPat tgtS currPtr  = do
   -- once we have read the rest from the handler we need to go back to the start
   -- of the previous buffer
   let tgtPtr = advancePtr readPtr (- copySize)
-  liftIO $ putStrLn $ "tgtS = " <> show tgtS
-  liftIO $ putStrLn $ "copySize = " <> show copySize  
+--  liftIO $ putStrLn $ "tgtS = " <> show tgtS
+--  liftIO $ putStrLn $ "copySize = " <> show copySize  
 --  liftIO $ putStrLn "copiedPtr: "
-  liftIO $ traverse_ (\n -> readOffPtr tgtPtr n >>= print) [0..49]
+--  liftIO $ traverse_ (\n -> readOffPtr tgtPtr n >>= print) [0..49]
   count <- liftIO $ match_p 0 tgtPtr 0 accStart# 0
   let matches = Match count []
   let endPtr = advancePtr tgtPtr (tgtS - copySize)
-  liftIO $ putStrLn "first element copied"
-  liftIO $ traverse_ (\n -> readOffPtr endPtr n >>= print) [0]  
+--  liftIO $ putStrLn "first element copied"
+--  liftIO $ traverse_ (\n -> readOffPtr endPtr n >>= print) [0]  
   let newPtr = advancePtr tgtPtr copySize
   liftIO $ copyPtr tgtPtr endPtr copySize
   yield matches
@@ -152,8 +158,8 @@ matchWorkP baPat tgtS currPtr  = do
       i' = i + nextBlock
     in
       do
-        putStrLn "COUNT"
-        print count'
+--        putStrLn "COUNT"
+--        print count'
         match_p i' nextPtrBlock 0 accStart# count'  
   -- There can be no more matche
   match_p i ptr j acc# count | i >= hittingPt =
@@ -262,15 +268,15 @@ matchWork mbPat tgtS tgtPtr = match_p 0 tgtPtr 0 accStart# 0
   match_end :: Int -> Int -> Int -> Ptr Word8 -> Int -> IO Match
   match_end left i j ptr count | i + (patS - (j + 1)) > left =
     do
-      putStrLn $ "first"
-      putStrLn $ "j = " <> show j
-      putStrLn $ "i = " <> show i
-      putStrLn $ "i = " <> show i
+--      putStrLn $ "first"
+--      putStrLn $ "j = " <> show j
+--      putStrLn $ "i = " <> show i
+--      putStrLn $ "i = " <> show i
       pure $ Match count []
   match_end left i j ptr count |  i >= endS =
     do
-      putStrLn $ "j = " <> show j
-      putStrLn $ "i = " <> show i
+--      putStrLn $ "j = " <> show j
+--      putStrLn $ "i = " <> show i
       pure $ Match count []
   match_end left i j ptr count | j == patS =
     let
@@ -298,21 +304,21 @@ matchWork mbPat tgtS tgtPtr = match_p 0 tgtPtr 0 accStart# 0
   -- There can be no more matches
   match_p i ptr j acc# count | i >= hittingPt =
     do
-      putStrLn $ "i = " <> show i
-      putStrLn $ "count " <> show count
+--      putStrLn $ "i = " <> show i
+--      putStrLn $ "count " <> show count
       let finalPtr = advancePtr tgtPtr i
       let entriesLeft = tgtS - i
-      putStrLn $ "entries " <> show entriesLeft
-      putStrLn "finalPtr"      
-      traverse_ (\n -> readOffPtr finalPtr n >>= print) [0..4]
+--      putStrLn $ "entries " <> show entriesLeft
+--      putStrLn "finalPtr"      
+--      traverse_ (\n -> readOffPtr finalPtr n >>= print) [0..4]
       
 --      putStrLn ""
       (<> Match count []) <$> match_end entriesLeft 0 0 finalPtr 0
   -- The current collection of considered matches don't work so skip forward by 16
   match_p i ptr j acc# count | tagToEnum# (acc# ==# 0#) = --tr "2" $
     do
-      putStrLn "match failed"
-      putStrLn $ "i = " <> show i
+--      putStrLn "match failed"
+--      putStrLn $ "i = " <> show i
   --  Note the pointer has already been advanced forward here, it maybe be better
   --  to advance at the start of the do work branch
       let nextBlock = 16 - j
@@ -326,10 +332,10 @@ matchWork mbPat tgtS tgtPtr = match_p 0 tgtPtr 0 accStart# 0
       nextPtrBlock = advancePtr ptr nextBlock
     in
       do
-        putStrLn "match found"
-        putStrLn $ "i = " <> show i
-        putStrLn $ "count = " <> show count'
---        putStrLn "ptr :"
+--        putStrLn "match found"
+--        putStrLn $ "i = " <> show i
+--        putStrLn $ "count = " <> show count'
+----        putStrLn "ptr :"
 --        liftIO $ traverse_ (\n -> readOffPtr ptr n >>= print) [0..15]        
 --      tr "3" $
         match_p (i + 16) nextPtrBlock 0 accStart# count'
@@ -348,10 +354,10 @@ matchWork mbPat tgtS tgtPtr = match_p 0 tgtPtr 0 accStart# 0
     in
       do
         val <- readOffPtr ptr 0 
-        putStrLn $ "j = " <> show j
-        putStrLn $ "pVal = " <> show (W8# p_val#)
-        putStrLn $ "ptrVal = " <> show val
-        putStrLn $ "j_comp = " <> show (I# j_comp#)
+--        putStrLn $ "j = " <> show j
+--        putStrLn $ "pVal = " <> show (W8# p_val#)
+--        putStrLn $ "ptrVal = " <> show val
+--        putStrLn $ "j_comp = " <> show (I# j_comp#)
 --        
 --        putStrLn $ "ptr"
 --        liftIO $ traverse_ (\n -> readOffPtr ptr n >>= print) [0..15]
