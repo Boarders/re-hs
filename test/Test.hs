@@ -10,7 +10,7 @@ main :: IO ()
 main = do
   testFile
   withFile fileName ReadMode $ \hdlr -> do
-    matchFromFile (2^4) hdlr pat >>= print
+    matchFromFile (2^5) hdlr pat >>= print
     pure ()
 
     
@@ -35,7 +35,7 @@ fileName = "test.dat"
 bstr :: BS.ByteString
 bstr =
   let pat = BS.pack ([1,2,3,4,5])
-  in fold (replicate 20 pat)
+  in fold (replicate 11 pat)
 
 testFile :: IO ()
 testFile = do
