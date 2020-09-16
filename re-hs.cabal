@@ -69,7 +69,8 @@ Test-Suite test
                   , QuickCheck             
                   , tasty                  
                   , tasty-quickcheck
-                  , bytestring   
+                  , bytestring
+                  , primitive
 
 
   other-modules:                        
